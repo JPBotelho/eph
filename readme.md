@@ -43,6 +43,7 @@ So very little is done on the Querying side, it's all prometheus - this tool jus
 
 ## Future work
 Load data from a grafana csv file.
+A daemon that can be configured as a Grafana datasource that fetches metrics from file ondemand for a specific job, and executes queries on it.
 Run inside a cloudflare worker (both ingester and querier).
 
 ## Installation
