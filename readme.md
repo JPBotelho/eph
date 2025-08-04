@@ -4,7 +4,7 @@ Run PromQL queries without a running Prometheus instance.
 
 **ephemeral-prometheus** is a CLI tool that lets you load metrics from a file and run [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) queries against them — no Prometheus server required.
 
-It pairs with an **ingester** that supports pull and push-based metric ingestion, uploading them to an S3-compatible blob storage in a format the CLI can understand.
+It pairs with an **ingester** that supports pull-based metric ingestion, uploading them to an S3-compatible blob storage in a format the CLI can understand.
 
 ---
 ## Motivation
@@ -32,7 +32,6 @@ Although the Prometheus parser complains about having duplicate comments, the CL
 ## How it works
 The **ingester** can be configured:
  - **to scrape** a target serving Prometheus text exposition format (the usual /metrics). It will append the current timestamp if not present, and append it to the current job's file. When the **job finishes** it will upload the file to the configured destination.
- - as a **remote write** target. 
 
 The **cli**:
  - starts a local TSDB (similar to promtool test)
@@ -42,7 +41,7 @@ The **cli**:
 So very little is done on the Querying side, it's all prometheus - this tool just gives you a nicer interface.
 
 ## Future work
-Load data from a grafana csv file.
+Store data in remote_write format (smaller, faster to ingest).
 A daemon that can be configured as a Grafana datasource that fetches metrics from file ondemand for a specific job, and executes queries on it.
 Run inside a cloudflare worker (both ingester and querier).
 
