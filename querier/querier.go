@@ -98,6 +98,11 @@ func Run(args []string) {
 		}
 
 		fmt.Println("\nInstant Query result:", res.Value)
+
+		fmt.Printf("Num Series: %d\n", ts.DB.Head().NumSeries())
+		fmt.Printf("Min Time: %d\n", ts.DB.Head().Meta().MinTime)
+		fmt.Printf("Max Time: %d\n", ts.DB.Head().Meta().MaxTime)
+
 	} else {
 		rangeQry, err := engine.NewRangeQuery(
 			context.Background(),
