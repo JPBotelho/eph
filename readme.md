@@ -41,6 +41,8 @@ The **cli**:
 So very little is done on the Querying side, it's all prometheus - this tool just gives you a nicer interface.
 
 ## Future work
+TODO: interactive session
+
 Store data in remote_write format (smaller, faster to ingest).
 A daemon that can be configured as a Grafana datasource that fetches metrics from file ondemand for a specific job, and executes queries on it.
 Run inside a cloudflare worker (both ingester and querier).
