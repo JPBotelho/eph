@@ -7,6 +7,10 @@ import (
 	"log"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/teststorage"
 )
@@ -17,6 +21,10 @@ func Run(args []string) {
 	fs := flag.NewFlagSet("querier", flag.ExitOnError)
 
 	dataFile := fs.String("src", "", "Location of metrics file")
+	keyId := fs.String("keyId", "", "Access key id")
+	secretKey := fs.String("secretKey", "", "Secret access key")
+	bucket := fs.String("bucket", "", "S3 bucket name")
+
 	fileFormat := fs.String("format", "sequence", "Metrics file format.")
 	queryType := fs.String("type", "instant", "Query type: instant or range")
 	queryStr := fs.String("query", "", "PromQL query string")
@@ -24,6 +32,9 @@ func Run(args []string) {
 	endTs := fs.Int64("end", 0, "End time (UNIX ms) - required for range")
 	instantTs := fs.Int64("time", 0, "Instant query time (UNIX ms) - required for instant")
 	step := fs.Int64("step", 0, "Step interval for range queries (in seconds)")
+	endpoint := fs.String("endpoint", "", "R2 endpoint")
+
+	client := &s3.Client{}
 
 	// Parse arguments for this subcommand
 	if err := fs.Parse(args); err != nil {
@@ -35,8 +46,46 @@ func Run(args []string) {
 		log.Fatal("Error: --query is required")
 	}
 
+	mode := ""
+
 	if *dataFile == "" {
-		log.Fatal("Error: --src is required")
+		fmt.Println("Reading from R2...")
+		if *keyId == "" {
+			log.Fatal("Error: --keyId is required")
+		}
+		if *endpoint == "" {
+			log.Fatal("Error: --endpoint is required")
+		}
+		if *secretKey == "" {
+			log.Fatal("Error: --secretKey is required")
+		}
+
+		if *bucket == "" {
+			log.Fatal("Error: --bucket is required")
+		}
+
+		// Create static credentials provider
+		creds := credentials.NewStaticCredentialsProvider(*keyId, *secretKey, "")
+
+		// Load AWS config without worrying about the global resolver
+		cfg, err := config.LoadDefaultConfig(
+			context.Background(),
+			config.WithCredentialsProvider(creds),
+			config.WithRegion("auto"), // "auto" works for R2
+		)
+		if err != nil {
+			log.Fatalf("failed to load AWS config: %v", err)
+		}
+
+		client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(*endpoint)
+		})
+
+		mode = "r2"
+
+	} else {
+		fmt.Printf("Reading metrics from file %s", *dataFile)
+		mode = "file"
 	}
 
 	switch *queryType {
@@ -69,8 +118,12 @@ func Run(args []string) {
 
 	app := ts.Appender(context.Background())
 
-	if *fileFormat == "sequence" {
-		ParseSequenceFile(app, *dataFile)
+	if mode == "file" {
+		if *fileFormat == "sequence" {
+			ParseSequenceFile(app, *dataFile)
+		}
+	} else {
+		GetFiles(*bucket, *client)
 	}
 
 	// Create PromQL engine
@@ -128,4 +181,25 @@ func Run(args []string) {
 	// Clean up
 	ts.Close()
 	fmt.Printf("\nProgram execution time: %v\n", time.Since(tstart))
+}
+
+func GetFiles(bucket string, client s3.Client) {
+	// List objects in the bucket
+	input := &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucket),
+	}
+
+	output, err := client.ListObjectsV2(context.Background(), input)
+	if err != nil {
+		log.Fatalf("failed to list objects: %v", err)
+	}
+
+	// Print results
+	for _, obj := range output.Contents {
+		fmt.Printf("%-50s Size: %10d  LastModified: %s\n",
+			aws.ToString(obj.Key),
+			obj.Size,
+			obj.LastModified.Format(time.RFC3339),
+		)
+	}
 }

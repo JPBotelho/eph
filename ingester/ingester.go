@@ -41,6 +41,8 @@ func Run(args []string) {
 		log.Fatalf("Failed to parse args: %v", err)
 	}
 
+	client := &s3.Client{}
+
 	if *output == "" {
 		fmt.Println("Outputting to R2...")
 		if *keyId == "" {
@@ -56,6 +58,23 @@ func Run(args []string) {
 		if *bucket == "" {
 			log.Fatal("Error: --bucket is required")
 		}
+
+		// Create static credentials provider
+		creds := credentials.NewStaticCredentialsProvider(*keyId, *secretKey, "")
+
+		// Load AWS config without worrying about the global resolver
+		cfg, err := config.LoadDefaultConfig(
+			context.Background(),
+			config.WithCredentialsProvider(creds),
+			config.WithRegion("auto"), // "auto" works for R2
+		)
+		if err != nil {
+			log.Fatalf("failed to load AWS config: %v", err)
+		}
+
+		client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(*endpoint)
+		})
 
 	} else {
 		fmt.Printf("Outputting to file %s", *output)
@@ -112,7 +131,16 @@ func Run(args []string) {
 	//	fmt.Printf("Failed to write output file: %v\n", err)
 	//	return
 	//}
-	Upload([]byte(joinWithNewlines(buffer)), *endpoint, *bucket, *keyId, *secretKey, *id)
+	// Upload object
+
+	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket: bucket,
+		Key:    id,
+		Body:   bytes.NewReader([]byte(joinWithNewlines(buffer))),
+	})
+	if err != nil {
+		log.Fatalf("failed to upload object: %v", err)
+	}
 
 	fmt.Printf("Scraping complete. Output saved to %s\n", *output)
 	// flust buffer to output file
@@ -151,38 +179,4 @@ func AddTimestamp(metrics []byte) []byte {
 	}
 
 	return buffer.Bytes()
-}
-
-func Upload(content []byte, endpoint string, bucket string, keyId string, secretKey string, jobId string) {
-	ctx := context.Background()
-	region := "auto"
-	// Create static credentials provider
-	creds := credentials.NewStaticCredentialsProvider(keyId, secretKey, "")
-
-	// Load AWS config without worrying about the global resolver
-	cfg, err := config.LoadDefaultConfig(
-		ctx,
-		config.WithCredentialsProvider(creds),
-		config.WithRegion(region), // "auto" works for R2
-	)
-	if err != nil {
-		log.Fatalf("failed to load AWS config: %v", err)
-	}
-
-	// Create S3 client with endpoint override for Cloudflare R2
-	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		o.BaseEndpoint = aws.String(endpoint)
-	})
-
-	// Upload object
-	_, err = client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: &bucket,
-		Key:    &jobId,
-		Body:   bytes.NewReader(content),
-	})
-	if err != nil {
-		log.Fatalf("failed to upload object: %v", err)
-	}
-
-	fmt.Printf("✅ Uploaded %s to bucket %s in region %s\n", jobId, bucket, region)
 }
