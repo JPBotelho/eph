@@ -145,6 +145,7 @@ type TerminalStatus struct {
 	queryMode     string
 	intervalStart time.Time
 	intervalEnd   time.Time
+	interval      time.Duration
 	lookbackDelta int
 }
 
@@ -199,12 +200,14 @@ func BuildMiddleCol(status *TerminalStatus) (*tview.Flex, *tview.Table) {
 		"Lookback delta:",
 		"Interval start:",
 		"Interval end:",
+		"Interval:",
 	}
 	values := []string{
 		status.queryMode,
 		fmt.Sprintf("%ds", status.lookbackDelta),
 		fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()),
 		fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()),
+		string(status.interval),
 	}
 
 	for i := range labels {
@@ -246,6 +249,7 @@ func UpdateMiddleCol(tbl *tview.Table, status *TerminalStatus) {
 	set(1, fmt.Sprintf("%ds", status.lookbackDelta))
 	set(2, fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()))
 	set(3, fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()))
+	set(4, string(status.interval))
 }
 func BuildCommandsCol() *tview.Flex {
 	table := tview.NewTable().
@@ -258,6 +262,7 @@ func BuildCommandsCol() *tview.Flex {
 		"$ lookback !val",
 		"$ interval start !val",
 		"$ interval end !val",
+		"$ interval !val",
 		"$ metrics !val",
 	}
 	descs := []string{
@@ -266,6 +271,7 @@ func BuildCommandsCol() *tview.Flex {
 		"set lookback delta to !val seconds",
 		"set interval start to !val (unix ms)",
 		"set interval end to !val (unix ms)",
+		"set interval to !val (seconds)",
 		"list metrics containing !val",
 	}
 
@@ -290,8 +296,9 @@ func BuildCommandsCol() *tview.Flex {
 func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, onExit func()) {
 	status := TerminalStatus{}
 	status.queryMode = "instant"
-	status.intervalEnd = time.Now()
-	status.intervalStart = time.Now().Add(-1 * time.Hour)
+	status.intervalEnd = file.Date
+	status.intervalStart = file.Date.Add(-1 * time.Hour)
+	status.interval = 300 * time.Second
 
 	ts, err := teststorage.NewWithError()
 	if err != nil {
@@ -333,14 +340,29 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 					outputView.Write([]byte(fmt.Sprintf("\n[green] %s\n", parsedCommand)))
 					return
 				}
-
-				query, err := engine.NewInstantQuery(
-					context.Background(),
-					ts,
-					nil,
-					cmd,
-					time.Now(),
+				var (
+					query promql.Query
+					err   error
 				)
+				if status.queryMode == "instant" {
+					query, err = engine.NewInstantQuery(
+						context.Background(),
+						ts,
+						nil,
+						cmd,
+						time.Now(),
+					)
+				} else {
+					query, err = engine.NewRangeQuery(
+						context.Background(),
+						ts,
+						nil,
+						cmd,
+						status.intervalStart,
+						status.intervalEnd,
+						status.interval,
+					)
+				}
 				if err != nil {
 					outputView.Write([]byte(fmt.Sprintf("\n[green]%v\n", err)))
 				}
@@ -384,8 +406,8 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 
 	header := tview.NewFlex().
 		SetDirection(tview.FlexColumn).
-		AddItem(BuildLeftCol(ts.DB, file.Context, file.Name, file.Date), 0, 35, false).
-		AddItem(middleFlex, 0, 18, false).
+		AddItem(BuildLeftCol(ts.DB, file.Context, file.Name, file.Date), 0, 25, false).
+		AddItem(middleFlex, 0, 25, false).
 		AddItem(BuildCommandsCol(), 0, 27, false).
 		AddItem(rightCol, 0, 20, true)
 
@@ -454,7 +476,16 @@ func ProcessCommand(stdin string, db *tsdb.DB, status *TerminalStatus) string {
 			}
 			status.intervalEnd = time.UnixMilli(val)
 			return "interval end " + parts[2]
+		} else if len(parts) == 2 {
+
+			val, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				return "invalid number of arguments"
+			}
+			status.interval = time.Second * time.Duration(val)
+			return "interval " + parts[1]
 		}
+
 		return "invalid arguments"
 
 	case "metrics":
