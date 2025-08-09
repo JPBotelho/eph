@@ -406,13 +406,20 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 				outputView.Write([]byte(fmt.Sprintf("[orange]$ %s", cmd)))
 				inputField.SetText("")
 
-				parsedCommand := ProcessCommand(cmd, ts.DB, &status)
+				parsedCommand := ProcessCommand(cmd, ts.DB, &status, outputView)
+
+				// already handled by ProcessCommand
+				if parsedCommand == "metrics" {
+					return
+				}
+
 				if parsedCommand != "" {
 					UpdateMiddleCol(middleTable, &status)
 					//appp.Draw()
 					outputView.Write([]byte(fmt.Sprintf("\n[green] %s\n", parsedCommand)))
 					return
 				}
+
 				var (
 					query promql.Query
 					err   error
@@ -519,7 +526,7 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 	})
 }
 
-func ProcessCommand(stdin string, db *tsdb.DB, status *TerminalStatus) string {
+func ProcessCommand(stdin string, db *tsdb.DB, status *TerminalStatus, outputView *tview.TextView) string {
 	parts := strings.Fields(stdin)
 	if len(parts) == 0 {
 		return ""
@@ -581,8 +588,18 @@ func ProcessCommand(stdin string, db *tsdb.DB, status *TerminalStatus) string {
 		// "metrics" (no arg) => list all metric names
 		// "metrics <substr>"  => list metric names containing <substr>
 		if len(parts) == 1 || len(parts) == 2 {
+			matcher := ""
+			if len(parts) == 2 {
+				matcher = parts[1]
+			}
 
-			return ""
+			metrics := GetMetricNames(*db, matcher)
+			outputView.Write([]byte("\n"))
+			for _, m := range metrics {
+				outputView.Write([]byte(fmt.Sprintf("[green] %s\n", m)))
+			}
+
+			return "metrics"
 		}
 		return "invalid number of arguments"
 	case "time":

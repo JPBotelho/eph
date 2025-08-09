@@ -4,10 +4,12 @@ import (
 	"context"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/prometheus/prometheus/tsdb"
 )
 
 type FileItem struct {
@@ -58,4 +60,33 @@ func DownloadFile(bucket string, file *FileItem, client s3.Client) {
 		log.Fatalf("failed to read object body: %v", err)
 	}
 	file.Data = body
+}
+
+func GetMetricNames(db tsdb.DB, matcher string) []string {
+	// Define a time range to cover the whole database
+	// Here, min and max times span the entire TSDB
+	minTime := db.Head().MinTime()
+	maxTime := db.Head().MaxTime()
+
+	q, err := db.Querier(minTime, maxTime)
+	if err != nil {
+		log.Printf("error creating querier: %v", err)
+		return nil
+	}
+	defer q.Close()
+
+	metricNames, _, err := q.LabelValues(context.Background(), "__name__", nil)
+	if err != nil {
+		log.Printf("error fetching metric names: %v", err)
+		return nil
+	}
+
+	var filtered []string
+	for _, name := range metricNames {
+		if strings.Contains(name, matcher) {
+			filtered = append(filtered, name)
+		}
+	}
+
+	return filtered
 }
