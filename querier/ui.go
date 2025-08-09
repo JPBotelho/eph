@@ -196,21 +196,33 @@ func BuildMiddleCol(status *TerminalStatus) (*tview.Flex, *tview.Table) {
 		SetBorders(false).
 		SetSelectable(false, false)
 
-	labels := []string{
-		"Current mode:",
-		"Query time:",
-		"Lookback delta:",
-		"Interval start:",
-		"Interval end:",
-		"Interval:",
-	}
-	values := []string{
-		status.queryMode,
-		fmt.Sprintf("%s [blue](%d)", status.instantTime.Format(time.RFC3339), status.intervalStart.UnixMilli()),
-		status.lookbackDelta.String(),
-		fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()),
-		fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()),
-		status.interval.String(),
+	var labels []string
+	var values []string
+
+	if status.queryMode == "instant" {
+		labels = []string{
+			"Current mode:",
+			"Query time:",
+			"Lookback delta:",
+		}
+		values = []string{
+			status.queryMode,
+			fmt.Sprintf("%s [blue](%d)", status.instantTime.Format(time.RFC3339), status.instantTime.UnixMilli()),
+			status.lookbackDelta.String(),
+		}
+	} else {
+		labels = []string{
+			"Current mode:",
+			"Interval start:",
+			"Interval end:",
+			"Interval:",
+		}
+		values = []string{
+			status.queryMode,
+			fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()),
+			fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()),
+			status.interval.String(),
+		}
 	}
 
 	for i := range labels {
@@ -234,27 +246,82 @@ func BuildMiddleCol(status *TerminalStatus) (*tview.Flex, *tview.Table) {
 }
 
 // Call this after ProcessCommand mutates status.
-// Only updates the value column (col=1).
+// Prefer to update only the value column (col=1). If the mode's layout
+// (instant vs range) no longer matches the table, rebuild rows & labels.
 func UpdateMiddleCol(tbl *tview.Table, status *TerminalStatus) {
 	if tbl == nil {
 		return
 	}
-	set := func(row int, text string) {
-		// If the cell exists, update it; otherwise create it.
-		if c := tbl.GetCell(row, 1); c != nil {
-			c.SetText(text)
-			return
+
+	// Desired rows based on mode
+	var labels []string
+	var values []string
+	if status.queryMode == "instant" {
+		labels = []string{
+			"Current mode:",
+			"Query time:",
+			"Lookback delta:",
 		}
-		tbl.SetCell(row, 1, tview.NewTableCell(text).SetAlign(tview.AlignLeft).SetExpansion(1))
+		values = []string{
+			status.queryMode,
+			fmt.Sprintf("%s [blue](%d)", status.instantTime.Format(time.RFC3339), status.instantTime.UnixMilli()),
+			status.lookbackDelta.String(),
+		}
+	} else {
+		labels = []string{
+			"Current mode:",
+			"Interval start:",
+			"Interval end:",
+			"Interval:",
+		}
+		values = []string{
+			status.queryMode,
+			fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()),
+			fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()),
+			status.interval.String(),
+		}
 	}
 
-	set(0, status.queryMode)
-	set(1, fmt.Sprintf("%s [blue](%d)", status.instantTime.Format(time.RFC3339), status.instantTime.UnixMilli()))
-	set(2, status.lookbackDelta.String())
-	set(3, fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()))
-	set(4, fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()))
-	set(5, status.interval.String())
+	// Decide if we can just update col=1 or must rebuild (e.g., mode flip).
+	needRebuild := tbl.GetRowCount() != len(labels)
+	if !needRebuild {
+		for i, want := range labels {
+			c := tbl.GetCell(i, 0)
+			if c == nil || c.Text != want {
+				needRebuild = true
+				break
+			}
+		}
+	}
+
+	if needRebuild {
+		// Rebuild labels and values to match the current mode.
+		tbl.Clear()
+		for i := range labels {
+			tbl.SetCell(i, 0,
+				tview.NewTableCell(labels[i]).
+					SetTextColor(tcell.ColorOrange).
+					SetAlign(tview.AlignLeft).
+					SetExpansion(0))
+
+			tbl.SetCell(i, 1,
+				tview.NewTableCell(values[i]).
+					SetAlign(tview.AlignLeft).
+					SetExpansion(1))
+		}
+		return
+	}
+
+	// Fast path: labels already match mode, update only values (col=1).
+	for i, val := range values {
+		if c := tbl.GetCell(i, 1); c != nil {
+			c.SetText(val)
+		} else {
+			tbl.SetCell(i, 1, tview.NewTableCell(val).SetAlign(tview.AlignLeft).SetExpansion(1))
+		}
+	}
 }
+
 func BuildCommandsCol() *tview.Flex {
 	table := tview.NewTable().
 		SetBorders(false).
