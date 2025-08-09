@@ -372,7 +372,7 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 	status.interval = 300 * time.Second
 	status.instantTime = file.Date
 	status.lookbackDelta = 300 * time.Second
-
+	app.EnableMouse(true)
 	ts, err := teststorage.NewWithError()
 	if err != nil {
 		log.Fatal("Failed to create storage")
@@ -395,7 +395,7 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 
 	inputField := tview.NewInputField()
 	inputField.
-		SetLabel("> ").
+		SetLabel("> ").SetPlaceholder("enter promql query. tab to scroll").
 		SetFieldWidth(0).
 		SetDoneFunc(func(key tcell.Key) {
 			if key == tcell.KeyEnter {
@@ -455,15 +455,31 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 				}
 
 			}
-		})
 
+			if key == tcell.KeyTAB {
+				app.SetFocus(outputView)
+			}
+		})
+	outputView.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+		switch ev.Key() {
+		case tcell.KeyTab:
+			// From output -> input
+			app.SetFocus(inputField)
+			return nil
+		case tcell.KeyBacktab:
+			// If you want Shift+Tab to also go to input
+			app.SetFocus(inputField)
+			return nil
+		}
+		return ev
+	})
 	// Your existing bordered "terminal" area.
 	terminal := tview.NewFlex()
 	terminal.
 		SetDirection(tview.FlexRow).
 		SetBorder(true)
 	terminal.
-		AddItem(outputView, 0, 1, false).
+		AddItem(outputView, 0, 1, true).
 		AddItem(inputField, 1, 0, true)
 
 		// --- LEFT column (your row1)
