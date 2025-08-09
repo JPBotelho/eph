@@ -26,3 +26,21 @@ func CleanupScrapeFile(r io.Reader) ([]byte, error) {
 
 	return cleaned, nil
 }
+
+func CleanupScrapeBytes(data []byte) ([]byte, error) {
+
+	// Normalize Windows CRLF → LF
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+
+	// Filter out comment lines
+	var cleaned []byte
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if len(line) > 0 && line[0] == '#' {
+			continue
+		}
+		cleaned = append(cleaned, line...)
+		cleaned = append(cleaned, '\n')
+	}
+
+	return cleaned, nil
+}

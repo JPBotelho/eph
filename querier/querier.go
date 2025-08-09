@@ -11,8 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/util/teststorage"
 )
 
 // go run . querier --src ./out.txt --query go_gc_gogc_percent --time 1754335979103
@@ -25,7 +23,7 @@ func Run(args []string) {
 	secretKey := fs.String("secretKey", "", "Secret access key")
 	bucket := fs.String("bucket", "", "S3 bucket name")
 
-	fileFormat := fs.String("format", "sequence", "Metrics file format.")
+	//fileFormat := fs.String("format", "sequence", "Metrics file format.")
 	queryType := fs.String("type", "instant", "Query type: instant or range")
 	queryStr := fs.String("query", "", "PromQL query string")
 	startTs := fs.Int64("start", 0, "Start time (UNIX ms) - required for range")
@@ -46,7 +44,7 @@ func Run(args []string) {
 		log.Fatal("Error: --query is required")
 	}
 
-	mode := ""
+	//mode := ""
 
 	if *dataFile == "" {
 		fmt.Println("Reading from R2...")
@@ -81,11 +79,11 @@ func Run(args []string) {
 			o.BaseEndpoint = aws.String(*endpoint)
 		})
 
-		mode = "r2"
+		//mode = "r2"
 
 	} else {
 		fmt.Printf("Reading metrics from file %s", *dataFile)
-		mode = "file"
+		//mode = "file"
 	}
 
 	switch *queryType {
@@ -111,95 +109,9 @@ func Run(args []string) {
 
 	tstart := time.Now()
 	// Create ephemeral in-memory storage
-	ts, err := teststorage.NewWithError()
-	if err != nil {
-		log.Fatal("Failed to create storage")
-	}
 
-	app := ts.Appender(context.Background())
+	files := GetFiles(*bucket, *client)
+	OpenUI(*bucket, files, *client)
 
-	if mode == "file" {
-		if *fileFormat == "sequence" {
-			ParseSequenceFile(app, *dataFile)
-		}
-	} else {
-		GetFiles(*bucket, *client)
-	}
-
-	// Create PromQL engine
-	engine := promql.NewEngine(promql.EngineOpts{
-		MaxSamples:    10000,
-		Timeout:       5 * time.Second,
-		LookbackDelta: 5 * time.Minute,
-	})
-
-	if *queryType == "instant" {
-		rangeQry, err := engine.NewInstantQuery(
-			context.Background(),
-			ts,
-			nil,
-			*queryStr,
-			time.UnixMilli(*instantTs),
-		)
-		if err != nil {
-			log.Fatalf("\nInstant query creation error: %v", err)
-		}
-
-		res := rangeQry.Exec(context.Background())
-		if res.Err != nil {
-			log.Fatalf("\nInstant query error: %v", res.Err)
-		}
-
-		fmt.Println("\nInstant Query result:", res.Value)
-
-		fmt.Printf("Num Series: %d\n", ts.DB.Head().NumSeries())
-		fmt.Printf("Min Time: %d\n", ts.DB.Head().Meta().MinTime)
-		fmt.Printf("Max Time: %d\n", ts.DB.Head().Meta().MaxTime)
-
-	} else {
-		rangeQry, err := engine.NewRangeQuery(
-			context.Background(),
-			ts,
-			nil,
-			*queryStr,
-			time.UnixMilli(*startTs),
-			time.UnixMilli(*endTs),
-			time.Duration(*step),
-		)
-		if err != nil {
-			log.Fatalf("\nRange query creation error: %v", err)
-		}
-
-		res := rangeQry.Exec(context.Background())
-		if res.Err != nil {
-			log.Fatalf("\nRange query error: %v", res.Err)
-		}
-
-		fmt.Println("\nRange Query result:", res.Value)
-	}
-
-	// Clean up
-	ts.Close()
 	fmt.Printf("\nProgram execution time: %v\n", time.Since(tstart))
-}
-
-func GetFiles(bucket string, client s3.Client) {
-	// List objects in the bucket
-	input := &s3.ListObjectsV2Input{
-		Bucket: aws.String(bucket),
-	}
-
-	output, err := client.ListObjectsV2(context.Background(), input)
-	if err != nil {
-		log.Fatalf("failed to list objects: %v", err)
-	}
-
-	// Print results
-	for _, obj := range output.Contents {
-		fmt.Printf("%-50s Size: %10d  LastModified: %s\n",
-			aws.ToString(obj.Key),
-			obj.Size,
-			obj.LastModified.Format(time.RFC3339),
-		)
-	}
 }
