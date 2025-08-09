@@ -146,7 +146,8 @@ type TerminalStatus struct {
 	intervalStart time.Time
 	intervalEnd   time.Time
 	interval      time.Duration
-	lookbackDelta int
+	lookbackDelta time.Duration
+	instantTime   time.Time
 }
 
 func BuildLeftCol(db *tsdb.DB, bucket string, jobId string, date time.Time) *tview.Flex {
@@ -197,6 +198,7 @@ func BuildMiddleCol(status *TerminalStatus) (*tview.Flex, *tview.Table) {
 
 	labels := []string{
 		"Current mode:",
+		"Query time:",
 		"Lookback delta:",
 		"Interval start:",
 		"Interval end:",
@@ -204,10 +206,11 @@ func BuildMiddleCol(status *TerminalStatus) (*tview.Flex, *tview.Table) {
 	}
 	values := []string{
 		status.queryMode,
-		fmt.Sprintf("%ds", status.lookbackDelta),
+		fmt.Sprintf("%s [blue](%d)", status.instantTime.Format(time.RFC3339), status.intervalStart.UnixMilli()),
+		status.lookbackDelta.String(),
 		fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()),
 		fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()),
-		string(status.interval),
+		status.interval.String(),
 	}
 
 	for i := range labels {
@@ -246,10 +249,11 @@ func UpdateMiddleCol(tbl *tview.Table, status *TerminalStatus) {
 	}
 
 	set(0, status.queryMode)
-	set(1, fmt.Sprintf("%ds", status.lookbackDelta))
-	set(2, fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()))
-	set(3, fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()))
-	set(4, string(status.interval))
+	set(1, fmt.Sprintf("%s [blue](%d)", status.instantTime.Format(time.RFC3339), status.instantTime.UnixMilli()))
+	set(2, status.lookbackDelta.String())
+	set(3, fmt.Sprintf("%s [blue](%d)", status.intervalStart.Format(time.RFC3339), status.intervalStart.UnixMilli()))
+	set(4, fmt.Sprintf("%s [blue](%d)", status.intervalEnd.Format(time.RFC3339), status.intervalEnd.UnixMilli()))
+	set(5, status.interval.String())
 }
 func BuildCommandsCol() *tview.Flex {
 	table := tview.NewTable().
@@ -259,18 +263,18 @@ func BuildCommandsCol() *tview.Flex {
 	cmds := []string{
 		"$ exit",
 		"$ mode instant/range",
+		"$ time !val",
 		"$ lookback !val",
-		"$ interval start !val",
-		"$ interval end !val",
+		"$ interval start/end !val",
 		"$ interval !val",
 		"$ metrics !val",
 	}
 	descs := []string{
 		"exit query view",
 		"change mode",
+		"set query time to !val (unix ms)",
 		"set lookback delta to !val seconds",
-		"set interval start to !val (unix ms)",
-		"set interval end to !val (unix ms)",
+		"set interval start/end to !val (unix ms)",
 		"set interval to !val (seconds)",
 		"list metrics containing !val",
 	}
@@ -299,6 +303,8 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 	status.intervalEnd = file.Date
 	status.intervalStart = file.Date.Add(-1 * time.Hour)
 	status.interval = 300 * time.Second
+	status.instantTime = file.Date
+	status.lookbackDelta = 300 * time.Second
 
 	ts, err := teststorage.NewWithError()
 	if err != nil {
@@ -350,7 +356,7 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 						ts,
 						nil,
 						cmd,
-						time.Now(),
+						status.instantTime,
 					)
 				} else {
 					query, err = engine.NewRangeQuery(
@@ -457,7 +463,7 @@ func ProcessCommand(stdin string, db *tsdb.DB, status *TerminalStatus) string {
 	case "lookback":
 		if len(parts) == 2 {
 			if newLookback, err := strconv.Atoi(parts[1]); err == nil {
-				status.lookbackDelta = newLookback
+				status.lookbackDelta = time.Duration(newLookback) * time.Second
 				return "lookback " + parts[1]
 			}
 			return "failed to parse number"
@@ -496,6 +502,15 @@ func ProcessCommand(stdin string, db *tsdb.DB, status *TerminalStatus) string {
 			return ""
 		}
 		return "invalid number of arguments"
+	case "time":
+		if len(parts) == 2 {
+			val, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				return "failed to parse time"
+			}
+			status.instantTime = time.UnixMilli(val)
+			return "time " + parts[1]
+		}
 	}
 
 	return ""
