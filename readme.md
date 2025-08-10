@@ -1,8 +1,26 @@
-# ephemeral-prometheus
+# eph
 
-Run PromQL queries without a running Prometheus instance.
+ephemeral prometheus
 
-**ephemeral-prometheus** is a CLI tool that lets you load metrics from a file and run [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) queries against them — no Prometheus server required.
+**this is still \_very\_ wip**
+
+```
+                .__     
+  ____  ______  |  |__  
+_/ __ \ \____ \ |  |  \ 
+\  ___/ |  |_> >|   Y  \
+ \___  >|   __/ |___|  /
+     \/ |__|         \/ 
+     
+```
+
+
+![](images/image.png)
+
+
+Run PromQL queries without a Prometheus instance.
+
+**ephemeral-prometheus** is a CLI tool that lets you load metrics from a file/R2 and run [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) queries against them — no Prometheus server required.
 
 It pairs with an **ingester** that supports pull-based metric ingestion, uploading them to an S3-compatible blob storage in a format the CLI can understand.
 
@@ -14,7 +32,7 @@ This tool allows you to run queries on those files.
 
 ## Supported formats
 
-Currently, Prometheus text format **with timestamps** is supported. The ingester supports this format. While scraping, it appends the timestamp to targets that do not expose it.
+Currently, Prometheus text format **with timestamps** is supported. 
 
 Example:
 ```
@@ -34,14 +52,11 @@ The **ingester** can be configured:
  - **to scrape** a target serving Prometheus text exposition format (the usual /metrics). It will append the current timestamp if not present, and append it to the current job's file. When the **job finishes** it will upload the file to the configured destination.
 
 The **cli**:
- - starts a local TSDB (similar to promtool test)
- - fetches the file, parsing based on the format and loading it into TSDB
- - runs PromQl queries using Prometheus' engine.
+ - fetches a list of files in a given S3 bucket
+ - opens an interactive session with a given file where you can run PromQL queries
 
-So very little is done on the Querying side, it's all prometheus - this tool just gives you a nicer interface.
 
 ## Future work
-TODO: interactive session
 
 Store data in remote_write format (smaller, faster to ingest).
 A daemon that can be configured as a Grafana datasource that fetches metrics from file ondemand for a specific job, and executes queries on it.
@@ -52,4 +67,4 @@ Run inside a cloudflare worker (both ingester and querier).
 ```bash
 git clone https://github.com/yourusername/ephemeral-prometheus.git
 cd ephemeral-prometheus
-go build -o ephemeral-prometheus .
+go run . querier --query go_gc_gogc_percent --time 1754335979103 --keyId $ACCESS_KEY_ID --secretKey $SECRET_ACCESS_KEY --endpoint $R2_BUCKET_ENDPOINT --bucket $R2_BUCKET_NAME

@@ -43,7 +43,7 @@ func OpenUI(bucket string, files []FileItem, s3client s3.Client) {
 		SetBorders(false).
 		SetSelectable(true, false).
 		SetBorder(true).
-		SetTitle(fmt.Sprintf("  [orange]bucket: %s  ", bucket))
+		SetTitle(fmt.Sprintf("  [grey]bucket: [orange]%s [blue](%d)  ", bucket, len(files)))
 
 	headers := []string{" Name", "Size (bytes)", "Last Modified", "Downloaded"}
 	for i, h := range headers {
@@ -64,12 +64,10 @@ func OpenUI(bucket string, files []FileItem, s3client s3.Client) {
 		table.SetCell(r+1, 3, tview.NewTableCell(status).SetExpansion(50))
 	}
 
-	headerText := fmt.Sprintf("[white::b]Bucket: %s   Items: %d", bucket, len(files))
 	footerText := "[::d]↑↓ Navigate   Enter View Details   Esc Quit"
 
 	frame := tview.NewFrame(table).
 		SetBorders(1, 1, 1, 1, 0, 0).
-		AddText(headerText, true, tview.AlignLeft, tcell.ColorBlack).
 		AddText("", true, tview.AlignCenter, tcell.ColorDefault).
 		AddText(footerText, false, tview.AlignCenter, tcell.ColorGray)
 
@@ -394,8 +392,9 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 		SetChangedFunc(func() { outputView.ScrollToEnd(); app.Draw() })
 
 	inputField := tview.NewInputField()
+	inputField.SetLabelColor(tcell.ColorLightGray)
 	inputField.
-		SetLabel("> ").SetPlaceholder("enter promql query. tab to scroll").
+		SetLabel("> ").SetPlaceholder("enter command, promql query or press tab to enter scroll mode").
 		SetFieldWidth(0).
 		SetDoneFunc(func(key tcell.Key) {
 			if key == tcell.KeyEnter {
@@ -411,6 +410,12 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 				// already handled by ProcessCommand
 				if parsedCommand == "metrics" {
 					return
+				}
+
+				if parsedCommand == "exit" {
+					app.SetInputCapture(nil)
+					ts.Close()
+					onExit()
 				}
 
 				if parsedCommand != "" {
@@ -517,9 +522,6 @@ func TerminalView(app *tview.Application, pages *tview.Pages, file *FileItem, on
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
-			app.SetInputCapture(nil)
-			ts.Close()
-			onExit()
 			return nil
 		}
 		return event
