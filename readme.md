@@ -14,10 +14,9 @@ _/ __ \ \____ \ |  |  \
 
 ![](images/image.png)
 
+## Run PromQL queries without a Prometheus instance.
 
-Run PromQL queries without a Prometheus instance.
-
-**ephemeral-prometheus** is a CLI tool that lets you load metrics from a file/R2 and run [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) queries against them — no Prometheus server required.
+**eph** is a CLI tool that lets you load metrics from a file/R2 and run [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) queries against them — no Prometheus server required.
 
 It pairs with an **ingester** that supports pull-based metric ingestion, uploading them to an S3-compatible blob storage in a format the CLI can understand.
 
