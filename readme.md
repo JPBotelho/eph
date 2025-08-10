@@ -1,9 +1,5 @@
 # eph
 
-ephemeral prometheus
-
-**this is still \_very\_ wip**
-
 ```
                 .__     
   ____  ______  |  |__  
@@ -11,7 +7,8 @@ _/ __ \ \____ \ |  |  \
 \  ___/ |  |_> >|   Y  \
  \___  >|   __/ |___|  /
      \/ |__|         \/ 
-     
+
+  ephemeral prometheus     
 ```
 
 
